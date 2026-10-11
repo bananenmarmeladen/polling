@@ -32,8 +32,7 @@ function chooseProject(project) {
 function renderSuggestions(query = "") {
   const normalizedQuery = query.trim().toLocaleLowerCase("de");
   const matches = projects
-    .filter((project) => !normalizedQuery || project.name.toLocaleLowerCase("de").includes(normalizedQuery))
-    .slice(0, 12);
+    .filter((project) => !normalizedQuery || project.name.toLocaleLowerCase("de").includes(normalizedQuery));
   suggestions.replaceChildren();
   activeSuggestion = -1;
 
