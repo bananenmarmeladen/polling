@@ -8,29 +8,87 @@ const HOST = process.env.HOST || "0.0.0.0";
 const ADMIN_KEY = process.env.PULSE_ADMIN_KEY || crypto.randomBytes(24).toString("base64url");
 const DATA_DIR = path.resolve(process.env.DATA_DIR || path.join(__dirname, "data"));
 const DATA_FILE = path.join(DATA_DIR, "polls.json");
+const VOTES_FILE = path.join(DATA_DIR, "project-votes.json");
+const PROJECTS_FILE = path.resolve(process.env.PROJECTS_FILE || path.join(__dirname, "projects.json"));
 const publicDir = path.join(__dirname, "public");
 const clients = new Map();
+const resultClients = new Set();
 let writeQueue = Promise.resolve();
 let rooms = {};
+let projects = [];
+let projectVotes = {};
 
 async function loadRooms() {
   await fs.mkdir(DATA_DIR, { recursive: true });
-  try {
-    const saved = JSON.parse(await fs.readFile(DATA_FILE, "utf8"));
-    rooms = saved && typeof saved === "object" && !Array.isArray(saved) ? saved : {};
-  } catch (error) {
-    if (error.code !== "ENOENT") throw error;
+  rooms = await readStoredJson(DATA_FILE, {});
+  projectVotes = await readStoredJson(VOTES_FILE, {});
+
+  const projectFile = JSON.parse(await fs.readFile(PROJECTS_FILE, "utf8"));
+  const configuredProjects = Array.isArray(projectFile) ? projectFile : projectFile.projects;
+  if (!Array.isArray(configuredProjects) || configuredProjects.length === 0) {
+    throw new Error(`${PROJECTS_FILE} must contain a non-empty array of projects.`);
+  }
+  projects = configuredProjects.map((item, index) => {
+    const name = cleanText(typeof item === "string" ? item : item?.name, 120);
+    const id = cleanText(typeof item === "string" ? `project-${String(index + 1).padStart(3, "0")}` : item?.id, 80);
+    if (!name || !id) throw new Error(`Invalid project at index ${index}.`);
+    return { id, name };
+  });
+  if (new Set(projects.map((project) => project.id)).size !== projects.length) {
+    throw new Error("Project IDs in the project list must be unique.");
+  }
+  for (const projectId of Object.values(projectVotes)) {
+    if (!projects.some((project) => project.id === projectId)) {
+      throw new Error(`Saved vote references unknown project "${projectId}". Update projects.json without removing projects that have votes.`);
+    }
   }
 }
 
-function persistRooms() {
-  const snapshot = JSON.stringify(rooms);
+async function readStoredJson(filePath, fallback) {
+  try {
+    const saved = JSON.parse(await fs.readFile(filePath, "utf8"));
+    if (!saved || typeof saved !== "object" || Array.isArray(saved)) {
+      throw new Error(`${filePath} must contain a JSON object.`);
+    }
+    return saved;
+  } catch (error) {
+    if (error.code === "ENOENT") return fallback;
+    throw error;
+  }
+}
+
+function persistJson(filePath, value) {
+  const snapshot = JSON.stringify(value);
   writeQueue = writeQueue.then(async () => {
-    const temporaryFile = `${DATA_FILE}.tmp`;
+    const temporaryFile = `${filePath}.tmp`;
     await fs.writeFile(temporaryFile, snapshot, { mode: 0o600 });
-    await fs.rename(temporaryFile, DATA_FILE);
+    await fs.rename(temporaryFile, filePath);
   });
   return writeQueue;
+}
+
+function persistRooms() {
+  return persistJson(DATA_FILE, rooms);
+}
+
+function getProjectResults() {
+  const counts = new Map(projects.map((project) => [project.id, 0]));
+  for (const projectId of Object.values(projectVotes)) {
+    counts.set(projectId, (counts.get(projectId) || 0) + 1);
+  }
+  const ranking = projects
+    .map((project) => ({ ...project, votes: counts.get(project.id) || 0 }))
+    .sort((a, b) => b.votes - a.votes || a.name.localeCompare(b.name, "de", { numeric: true }));
+  return {
+    totalVotes: Object.keys(projectVotes).length,
+    totalProjects: projects.length,
+    top20: ranking.slice(0, 20),
+  };
+}
+
+function publishProjectResults() {
+  const message = getProjectResults();
+  for (const client of resultClients) client.emit("results", message);
 }
 
 function sendJson(response, status, body) {
@@ -103,6 +161,37 @@ async function handleApi(request, response, url) {
 
   if (request.method === "GET" && url.pathname === "/api/health") {
     return sendJson(response, 200, { ok: true });
+  }
+
+  if (request.method === "GET" && url.pathname === "/api/projects") {
+    return sendJson(response, 200, { projects, totalProjects: projects.length });
+  }
+
+  if (request.method === "GET" && url.pathname === "/api/results") {
+    return sendJson(response, 200, getProjectResults());
+  }
+
+  if (request.method === "POST" && url.pathname === "/api/votes") {
+    const body = await readJson(request);
+    const projectId = typeof body.projectId === "string" ? body.projectId : "";
+    if (!projects.some((project) => project.id === projectId)) {
+      return sendJson(response, 400, { error: "Choose a project from the list." });
+    }
+    if (typeof body.voterId !== "string" || !/^[a-f0-9-]{20,64}$/i.test(body.voterId)) {
+      return sendJson(response, 400, { error: "A valid voter ID is required." });
+    }
+    if (Object.hasOwn(projectVotes, body.voterId)) {
+      return sendJson(response, 409, { error: "This browser has already cast its vote." });
+    }
+    projectVotes[body.voterId] = projectId;
+    try {
+      await persistJson(VOTES_FILE, projectVotes);
+    } catch (error) {
+      delete projectVotes[body.voterId];
+      throw error;
+    }
+    publishProjectResults();
+    return sendJson(response, 201, getProjectResults());
   }
 
   if (request.method === "GET" && url.pathname === "/api/rooms") {
@@ -209,18 +298,31 @@ async function handleApi(request, response, url) {
 }
 
 async function serveStatic(request, response, url) {
-  const requestedPath = url.pathname === "/" ? "/index.html" : decodeURIComponent(url.pathname);
-  const filePath = path.resolve(publicDir, `.${requestedPath}`);
-  if (!filePath.startsWith(`${publicDir}${path.sep}`)) return sendJson(response, 404, { error: "Not found." });
+  let requestedPath = url.pathname === "/" ? "/index.html" : decodeURIComponent(url.pathname);
+  if (requestedPath === "/results" || requestedPath === "/results/") requestedPath = "/results.html";
+  const libraryAssets = {
+    "/vendor/chart.umd.js": path.join(__dirname, "node_modules/chart.js/dist/chart.umd.js"),
+    "/vendor/socket.io.min.js": path.join(__dirname, "node_modules/socket.io/client-dist/socket.io.min.js"),
+  };
+  const filePath = libraryAssets[requestedPath] || path.resolve(publicDir, `.${requestedPath}`);
+  if (!libraryAssets[requestedPath] && !filePath.startsWith(`${publicDir}${path.sep}`)) {
+    return sendJson(response, 404, { error: "Not found." });
+  }
   try {
     const content = await fs.readFile(filePath);
-    const types = { ".html": "text/html; charset=utf-8", ".css": "text/css; charset=utf-8", ".js": "text/javascript; charset=utf-8", ".svg": "image/svg+xml" };
+    const types = {
+      ".html": "text/html; charset=utf-8",
+      ".css": "text/css; charset=utf-8",
+      ".js": "text/javascript; charset=utf-8",
+      ".svg": "image/svg+xml",
+      ".otf": "font/otf",
+    };
     response.writeHead(200, {
       "Content-Type": types[path.extname(filePath)] || "application/octet-stream",
       "Cache-Control": "no-cache",
       "X-Content-Type-Options": "nosniff",
       "Referrer-Policy": "no-referrer",
-      "Content-Security-Policy": "default-src 'self'; connect-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; script-src 'self'; base-uri 'none'; frame-ancestors 'none'",
+      "Content-Security-Policy": "default-src 'self'; connect-src 'self' ws: wss:; img-src 'self' data:; style-src 'self' 'unsafe-inline'; script-src 'self'; base-uri 'none'; frame-ancestors 'none'",
     });
     response.end(content);
   } catch (error) {
@@ -232,6 +334,7 @@ async function serveStatic(request, response, url) {
 const server = http.createServer(async (request, response) => {
   try {
     const url = new URL(request.url, `http://${request.headers.host || "localhost"}`);
+    if (url.pathname.startsWith("/socket.io/")) return;
     if (url.pathname.startsWith("/api/")) {
       await handleApi(request, response, url);
     } else {
@@ -242,6 +345,13 @@ const server = http.createServer(async (request, response) => {
     if (!response.headersSent) sendJson(response, error.status || 500, { error: error.status ? error.message : "The server could not complete this request." });
     else response.end();
   }
+});
+const { Server } = require("socket.io");
+const io = new Server(server, { serveClient: false });
+io.on("connection", (client) => {
+  resultClients.add(client);
+  client.emit("results", getProjectResults());
+  client.on("disconnect", () => resultClients.delete(client));
 });
 
 loadRooms().then(() => {

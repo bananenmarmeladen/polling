@@ -1,318 +1,156 @@
-const $ = (selector) => document.querySelector(selector);
+const search = document.querySelector("#project-search");
+const suggestions = document.querySelector("#project-suggestions");
+const voteButton = document.querySelector("#vote-button");
+const voteError = document.querySelector("#vote-error");
+const voteForm = document.querySelector("#vote-form");
+const votedState = document.querySelector("#voted-state");
+const ballotKey = "cantus-domus-project-ballot";
+const voterIdKey = "cantus-domus-voter-id";
 
-const views = {
-  welcome: $("#welcome-view"),
-  host: $("#host-view"),
-  audience: $("#audience-view"),
-};
-
-let currentRoom = null;
-let selectedOption = null;
-let eventSource = null;
-let toastTimer;
-
-function showView(name) {
-  Object.entries(views).forEach(([viewName, element]) => {
-    element.classList.toggle("hidden", viewName !== name);
-  });
-}
-
-function toast(message) {
-  const element = $("#toast");
-  element.textContent = message;
-  element.classList.add("visible");
-  clearTimeout(toastTimer);
-  toastTimer = setTimeout(() => element.classList.remove("visible"), 2600);
-}
-
-async function api(url, options = {}) {
-  const headers = new Headers(options.headers);
-  if (options.body) headers.set("Content-Type", "application/json");
-  if (options.admin) {
-    const key = sessionStorage.getItem("pulse-host-key");
-    if (key) headers.set("Authorization", `Bearer ${key}`);
-  }
-  const response = await fetch(url, { ...options, headers });
-  const body = await response.json().catch(() => ({}));
-  if (!response.ok) throw new Error(body.error || "Something went wrong. Please try again.");
-  return body;
-}
+let projects = [];
+let selectedProject = null;
+let activeSuggestion = -1;
 
 function newVoterId() {
   if (typeof crypto.randomUUID === "function") return crypto.randomUUID();
   return `${Date.now().toString(16)}-${Math.random().toString(16).slice(2)}-${Math.random().toString(16).slice(2)}`;
 }
 
-async function openHost() {
-  showView("host");
-  const unlocked = Boolean(sessionStorage.getItem("pulse-host-key"));
-  $("#host-key-prompt").classList.toggle("hidden", unlocked);
-  $("#host-studio").classList.toggle("hidden", !unlocked);
-  if (unlocked) {
-    $("#host-live-panel").classList.toggle("has-room", Boolean(currentRoom));
-    if (!currentRoom) {
-      try {
-        const { room } = await api("/api/rooms", { admin: true });
-        if (room) setRoom(room);
-      } catch (error) {
-        sessionStorage.removeItem("pulse-host-key");
-        $("#host-studio").classList.add("hidden");
-        $("#host-key-prompt").classList.remove("hidden");
-        $("#host-key-error").textContent = error.message;
-      }
-    }
+function setSuggestionsOpen(open) {
+  suggestions.classList.toggle("hidden", !open);
+  search.setAttribute("aria-expanded", String(open));
+}
+
+function chooseProject(project) {
+  selectedProject = project;
+  search.value = project.name;
+  setSuggestionsOpen(false);
+  voteButton.disabled = false;
+  voteError.textContent = "";
+}
+
+function renderSuggestions(query = "") {
+  const normalizedQuery = query.trim().toLocaleLowerCase("de");
+  const matches = projects
+    .filter((project) => !normalizedQuery || project.name.toLocaleLowerCase("de").includes(normalizedQuery))
+    .slice(0, 12);
+  suggestions.replaceChildren();
+  activeSuggestion = -1;
+
+  for (const project of matches) {
+    const option = document.createElement("button");
+    option.type = "button";
+    option.className = "suggestion-option";
+    option.setAttribute("role", "option");
+    option.textContent = project.name;
+    option.addEventListener("pointerdown", (event) => event.preventDefault());
+    option.addEventListener("click", () => chooseProject(project));
+    suggestions.append(option);
   }
-}
 
-function setRoom(room) {
-  currentRoom = room;
-  if (eventSource) eventSource.close();
-  eventSource = new EventSource(`/api/rooms/${encodeURIComponent(room.code)}/events`);
-  eventSource.onmessage = (event) => {
-    const latest = JSON.parse(event.data);
-    if (currentRoom?.code !== latest.code) return;
-    currentRoom = latest;
-    renderHostRoom(latest);
-    renderAudienceRoom(latest);
-  };
-  eventSource.onerror = () => {
-    if (eventSource.readyState === EventSource.CLOSED) {
-      $("#audience-error").textContent = "The live connection was interrupted. Refresh to reconnect.";
-    }
-  };
-  renderHostRoom(room);
-  renderAudienceRoom(room);
-}
-
-function renderResults(container, room, audience = false) {
-  const list = container;
-  list.replaceChildren();
-  room.options.forEach((option, index) => {
-    const count = room.counts[index] || 0;
-    const percent = room.totalVotes ? Math.round((count / room.totalVotes) * 100) : 0;
-    const row = document.createElement("div");
-    row.className = `result-row${audience ? " audience-result-row" : ""}`;
-    const label = document.createElement("div");
-    label.className = "result-label";
-    const name = document.createElement("span");
-    name.textContent = option;
-    const stat = document.createElement("span");
-    stat.className = "result-stat";
-    stat.textContent = `${percent}%`;
-    label.append(name, stat);
-    const track = document.createElement("div");
-    track.className = "result-track";
-    const fill = document.createElement("i");
-    fill.style.width = `${percent}%`;
-    track.append(fill);
-    const countLabel = document.createElement("span");
-    countLabel.className = "result-votes";
-    countLabel.textContent = `${count} ${count === 1 ? "vote" : "votes"}`;
-    row.append(label, track, countLabel);
-    list.append(row);
-  });
-}
-
-function renderHostRoom(room) {
-  $("#host-empty-state").classList.add("hidden");
-  $("#host-live-content").classList.remove("hidden");
-  $("#host-live-panel").classList.add("has-room");
-  $("#host-live-title").textContent = room.title;
-  $("#host-live-question").textContent = room.question;
-  $("#room-code").textContent = room.code;
-  $("#room-status").textContent = room.status === "open" ? "VOTING OPEN" : "VOTING CLOSED";
-  $("#room-status").classList.toggle("closed", room.status !== "open");
-  $("#vote-count").textContent = `${room.totalVotes} ${room.totalVotes === 1 ? "vote" : "votes"}`;
-  $("#close-poll-button").textContent = room.status === "open" ? "Close voting" : "Reopen voting";
-  renderResults($("#host-results"), room);
-}
-
-function renderAudienceRoom(room) {
-  if (!views.audience.classList.contains("hidden")) {
-    $("#join-prompt").classList.add("hidden");
-    $("#audience-poll").classList.remove("hidden");
+  if (matches.length === 0) {
+    const empty = document.createElement("p");
+    empty.className = "suggestions-empty";
+    empty.textContent = "Kein passendes Projekt gefunden.";
+    suggestions.append(empty);
   }
-  const key = `pulse-voted-${room.code}`;
-  const votedRound = Number(localStorage.getItem(key) || 0);
-  const alreadyVoted = votedRound === room.round;
-  $("#audience-title").textContent = room.title;
-  $("#audience-question").textContent = room.question;
-  $("#audience-status").textContent = room.status === "open" ? "LIVE" : "CLOSED";
-  $("#audience-status").classList.toggle("closed", room.status !== "open");
-  $("#audience-instruction").textContent = room.status !== "open"
-    ? "Voting has closed. Here’s what the room thinks."
-    : alreadyVoted
-      ? "Your answer is in. Here’s how the room is responding."
-      : "Choose the answer that feels right to you.";
-  $("#submit-vote").classList.toggle("hidden", room.status !== "open" || alreadyVoted);
-  $("#audience-results").classList.toggle("hidden", room.status === "open" && !alreadyVoted);
-  $("#audience-vote-count").textContent = `${room.totalVotes} ${room.totalVotes === 1 ? "vote" : "votes"}`;
-  renderResults($("#audience-results-list"), room, true);
-
-  const options = $("#audience-options");
-  options.replaceChildren();
-  room.options.forEach((option, index) => {
-    const button = document.createElement("button");
-    button.type = "button";
-    button.className = "audience-option";
-    button.disabled = room.status !== "open" || alreadyVoted;
-    button.setAttribute("aria-pressed", String(selectedOption === index));
-    const text = document.createElement("span");
-    text.textContent = option;
-    const marker = document.createElement("i");
-    marker.setAttribute("aria-hidden", "true");
-    button.append(text, marker);
-    button.addEventListener("click", () => {
-      selectedOption = index;
-      options.querySelectorAll(".audience-option").forEach((candidate, candidateIndex) => {
-        candidate.setAttribute("aria-pressed", String(candidateIndex === selectedOption));
-      });
-    });
-    options.append(button);
-  });
+  setSuggestionsOpen(true);
 }
 
-async function enterRoom(code) {
-  $("#join-error").textContent = "";
+function moveSuggestion(direction) {
+  const options = [...suggestions.querySelectorAll(".suggestion-option")];
+  if (options.length === 0) return;
+  activeSuggestion = (activeSuggestion + direction + options.length) % options.length;
+  options.forEach((option, index) => {
+    option.classList.toggle("active", index === activeSuggestion);
+    option.setAttribute("aria-selected", String(index === activeSuggestion));
+  });
+  options[activeSuggestion].scrollIntoView({ block: "nearest" });
+}
+
+async function loadProjects() {
   try {
-    const room = await api(`/api/rooms/${encodeURIComponent(code.toUpperCase())}`);
-    selectedOption = null;
-    history.replaceState(null, "", `/?room=${encodeURIComponent(room.code)}`);
-    showView("audience");
-    setRoom(room);
+    const response = await fetch("/api/projects");
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.error || "Die Projektliste konnte nicht geladen werden.");
+    projects = data.projects;
+    document.querySelector(".intro-copy .section-kicker").textContent = `${data.totalProjects} IDEEN · EINE STIMME`;
   } catch (error) {
-    $("#join-error").textContent = error.message;
+    voteError.textContent = error.message;
+    search.disabled = true;
+    voteButton.disabled = true;
   }
 }
 
-$("#create-first-poll").addEventListener("click", openHost);
-$("#host-key-button").addEventListener("click", openHost);
-$("#join-poll").addEventListener("click", () => {
-  showView("audience");
-  $("#join-prompt").classList.remove("hidden");
-  $("#audience-poll").classList.add("hidden");
-  $("#room-code-input").focus();
+search.addEventListener("focus", () => renderSuggestions(search.value));
+search.addEventListener("input", () => {
+  selectedProject = null;
+  voteButton.disabled = true;
+  renderSuggestions(search.value);
 });
-document.querySelectorAll("[data-home]").forEach((button) => button.addEventListener("click", () => showView("welcome")));
 
-$("#host-key-form").addEventListener("submit", async (event) => {
+search.addEventListener("keydown", (event) => {
+  if (event.key === "ArrowDown") {
+    event.preventDefault();
+    moveSuggestion(1);
+  } else if (event.key === "ArrowUp") {
+    event.preventDefault();
+    moveSuggestion(-1);
+  } else if (event.key === "Enter" && activeSuggestion >= 0) {
+    event.preventDefault();
+    const option = suggestions.querySelectorAll(".suggestion-option")[activeSuggestion];
+    const project = projects.find((candidate) => candidate.name === option?.textContent);
+    if (project) chooseProject(project);
+  } else if (event.key === "Escape") {
+    setSuggestionsOpen(false);
+  }
+});
+
+document.addEventListener("click", (event) => {
+  if (!event.target.closest(".search-wrap")) setSuggestionsOpen(false);
+});
+
+voteForm.addEventListener("submit", async (event) => {
   event.preventDefault();
-  const key = $("#host-key-input").value.trim();
-  if (!key) return;
-  $("#host-key-error").textContent = "";
+  if (!selectedProject) {
+    voteError.textContent = "Bitte wähle ein Projekt aus der Vorschlagsliste.";
+    return;
+  }
+
+  voteError.textContent = "";
+  voteButton.disabled = true;
+  voteButton.classList.add("loading");
   try {
-    const response = await fetch("/api/rooms", { headers: { Authorization: `Bearer ${key}` } });
+    const voterId = localStorage.getItem(voterIdKey) || newVoterId();
+    const response = await fetch("/api/votes", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ projectId: selectedProject.id, voterId }),
+    });
     const result = await response.json();
-    if (!response.ok) throw new Error(result.error || "Could not verify the host key.");
-    sessionStorage.setItem("pulse-host-key", key);
-    $("#host-key-prompt").classList.add("hidden");
-    $("#host-studio").classList.remove("hidden");
-    if (result.room) setRoom(result.room);
+    if (!response.ok) throw new Error(result.error || "Deine Stimme konnte nicht gespeichert werden.");
+    localStorage.setItem(voterIdKey, voterId);
+    localStorage.setItem(ballotKey, JSON.stringify({ projectId: selectedProject.id, projectName: selectedProject.name }));
+    document.querySelector("#voted-project").textContent = `Deine Stimme zählt für ${selectedProject.name}.`;
+    voteForm.classList.add("hidden");
+    votedState.classList.remove("hidden");
   } catch (error) {
-    $("#host-key-error").textContent = error.message;
+    voteError.textContent = error.message;
+    voteButton.disabled = false;
+  } finally {
+    voteButton.classList.remove("loading");
   }
 });
 
-$("#create-poll-form").addEventListener("submit", async (event) => {
-  event.preventDefault();
-  const formElement = event.currentTarget;
-  const form = new FormData(formElement);
-  const options = String(form.get("options")).split("\n").map((option) => option.trim()).filter(Boolean);
-  const error = $("#create-error");
-  error.textContent = "";
-  if (options.length < 2 || options.length > 8) {
-    error.textContent = "Add between two and eight answer options, one per line.";
-    return;
+try {
+  const savedBallot = JSON.parse(localStorage.getItem(ballotKey) || "null");
+  if (savedBallot) {
+    document.querySelector("#voted-project").textContent = `Deine Stimme zählt für ${savedBallot.projectName}.`;
+    voteForm.classList.add("hidden");
+    votedState.classList.remove("hidden");
   }
-  try {
-    const room = await api("/api/rooms", {
-      method: "POST",
-      admin: true,
-      body: JSON.stringify({
-        title: form.get("title"),
-        question: form.get("question"),
-        options,
-      }),
-    });
-    formElement.reset();
-    setRoom(room);
-    toast("Your room is live. Invite your audience!");
-  } catch (requestError) {
-    error.textContent = requestError.message;
-  }
-});
-
-$("#room-code-form").addEventListener("submit", (event) => {
-  event.preventDefault();
-  const code = $("#room-code-input").value.trim();
-  if (code) enterRoom(code);
-});
-
-$("#submit-vote").addEventListener("click", async () => {
-  if (!currentRoom || selectedOption === null) {
-    $("#audience-error").textContent = "Choose an answer before you vote.";
-    return;
-  }
-  const voterKey = `pulse-voter-${currentRoom.code}`;
-  const voterId = localStorage.getItem(voterKey) || newVoterId();
-  localStorage.setItem(voterKey, voterId);
-  $("#audience-error").textContent = "";
-  try {
-    const result = await api(`/api/rooms/${encodeURIComponent(currentRoom.code)}/votes`, {
-      method: "POST",
-      body: JSON.stringify({ option: selectedOption, voterId }),
-    });
-    localStorage.setItem(`pulse-voted-${currentRoom.code}`, String(result.round));
-    setRoom(result);
-  } catch (error) {
-    $("#audience-error").textContent = error.message;
-  }
-});
-
-$("#close-poll-button").addEventListener("click", async () => {
-  if (!currentRoom) return;
-  const action = currentRoom.status === "open" ? "close" : "reopen";
-  try {
-    const room = await api(`/api/rooms/${encodeURIComponent(currentRoom.code)}/control`, {
-      method: "PATCH",
-      admin: true,
-      body: JSON.stringify({ action }),
-    });
-    setRoom(room);
-  } catch (error) {
-    toast(error.message);
-  }
-});
-
-$("#reset-poll-button").addEventListener("click", async () => {
-  if (!currentRoom || !window.confirm("Clear all votes and reopen this poll?")) return;
-  try {
-    const room = await api(`/api/rooms/${encodeURIComponent(currentRoom.code)}/control`, {
-      method: "PATCH",
-      admin: true,
-      body: JSON.stringify({ action: "reset" }),
-    });
-    setRoom(room);
-    toast("Votes cleared. The poll is open again.");
-  } catch (error) {
-    toast(error.message);
-  }
-});
-
-$("#copy-link-button").addEventListener("click", async () => {
-  if (!currentRoom) return;
-  const invite = new URL(`/?room=${encodeURIComponent(currentRoom.code)}`, window.location.origin).href;
-  try {
-    await navigator.clipboard.writeText(invite);
-    toast("Invite link copied.");
-  } catch {
-    window.prompt("Copy this invite link:", invite);
-  }
-});
-
-const initialCode = new URLSearchParams(window.location.search).get("room");
-if (initialCode) {
-  showView("audience");
-  $("#room-code-input").value = initialCode;
-  enterRoom(initialCode);
+} catch (error) {
+  console.error("Gespeicherte Stimmabgabe konnte nicht gelesen werden.", error);
 }
+
+loadProjects();

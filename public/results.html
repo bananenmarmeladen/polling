@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="de">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="theme-color" content="#082d4a">
+    <meta name="description" content="Die 20 meistgewählten Projekte — live aktualisiert.">
+    <title>Live-Ergebnisse — Cantus Domus</title>
+    <link rel="icon" href="/cantus-domus-logo.svg" type="image/svg+xml">
+    <link rel="stylesheet" href="/styles.css">
+    <script src="/vendor/chart.umd.js" defer></script>
+    <script src="/vendor/socket.io.min.js" defer></script>
+    <script src="/results.js" defer></script>
+  </head>
+  <body class="results-page">
+    <header class="site-header results-header">
+      <a class="logo-link" href="/" aria-label="Zur Abstimmung"><img class="site-logo" src="/cantus-domus-logo.svg" alt="Cantus Domus"></a>
+      <nav class="main-nav" aria-label="Hauptnavigation">
+        <a class="nav-link" href="/">ABSTIMMEN</a>
+        <span class="nav-link current">LIVE-ERGEBNISSE</span>
+        <button id="fullscreen-button" class="fullscreen-button" type="button">Vollbild <span aria-hidden="true">⛶</span></button>
+      </nav>
+    </header>
+
+    <main class="results-stage">
+      <div class="stage-heading">
+        <div>
+          <p class="stage-kicker"><span class="live-pulse"></span> CANTUS DOMUS · LIVE-ABSTIMMUNG</p>
+          <h1>Die Stimmen <span>zählen.</span></h1>
+          <p class="stage-description">Die 20 Projekte mit den meisten Stimmen — live aktualisiert.</p>
+        </div>
+        <div class="vote-counter"><strong id="total-votes">0</strong><span>STIMMEN INSGESAMT</span></div>
+      </div>
+
+      <section class="chart-panel" aria-label="Top 20 Projekte nach Stimmenzahl">
+        <div class="chart-heading"><span>RANGLISTE</span><span id="connection-status"><i></i> VERBINDET …</span></div>
+        <div class="chart-wrap"><canvas id="results-chart" role="img" aria-label="Säulendiagramm der 20 meistgewählten Projekte"></canvas></div>
+        <p id="results-error" class="results-error" role="alert"></p>
+      </section>
+      <footer class="stage-footer"><a href="/">← Zurück zur Abstimmung</a><span>Jede Stimme bewegt etwas. <b>✳</b></span></footer>
+    </main>
+  </body>
+</html>
