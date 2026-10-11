@@ -18,6 +18,14 @@ Open:
 - `http://localhost:3000/` to vote.
 - `http://localhost:3000/results` to show the live top-20 presentation chart.
 
+For local testing, set `ALLOW_REPEAT_VOTES=true` to allow multiple votes from the same browser. The page shows a test-mode notice and stays available after each vote. Leave this unset for normal one-vote-per-browser behavior:
+
+```sh
+ALLOW_REPEAT_VOTES=true PORT=3001 DATA_DIR=./data-test npm start
+```
+
+The separate `data-test` folder keeps practice votes away from your normal data and is ignored by Git. Do not enable repeat voting for a real poll; without the flag, the server enforces one vote per browser.
+
 The default catalog is `projects.json`, containing 200 fictional German classical choir concert projects dated from 1996 through 2026 (at least six per year). Each project has a stable ID. Edit the names in that file to suit your event; keep the IDs unchanged so existing votes remain attached. It can be a JSON array of strings or an array of objects such as:
 
 ```json
@@ -68,6 +76,7 @@ Votes are stored in `DATA_DIR/project-votes.json` (default: `./data/project-vote
 | Method | Path | Purpose |
 | --- | --- | --- |
 | `GET` | `/api/projects` | Get the available projects |
+| `GET` | `/api/config` | Report whether repeat voting is enabled |
 | `GET` | `/api/results` | Get the current top 20 and total vote count |
 | `POST` | `/api/votes` | Submit `{ "projectId": "...", "voterId": "..." }` |
 | Socket.IO | default namespace | Receive `results` events after each vote and on connect |

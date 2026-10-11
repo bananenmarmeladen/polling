@@ -10,6 +10,7 @@ const voterIdKey = "cantus-domus-voter-id";
 let projects = [];
 let selectedProject = null;
 let activeSuggestion = -1;
+let allowRepeatVotes = false;
 
 function newVoterId() {
   if (typeof crypto.randomUUID === "function") return crypto.randomUUID();
@@ -69,11 +70,22 @@ function moveSuggestion(direction) {
 
 async function loadProjects() {
   try {
-    const response = await fetch("/api/projects");
-    const data = await response.json();
-    if (!response.ok) throw new Error(data.error || "Die Projektliste konnte nicht geladen werden.");
+    const [configResponse, projectsResponse] = await Promise.all([
+      fetch("/api/config"),
+      fetch("/api/projects"),
+    ]);
+    const config = await configResponse.json();
+    const data = await projectsResponse.json();
+    if (!configResponse.ok) throw new Error(config.error || "Die Abstimmungseinstellungen konnten nicht geladen werden.");
+    if (!projectsResponse.ok) throw new Error(data.error || "Die Projektliste konnte nicht geladen werden.");
+    allowRepeatVotes = config.allowRepeatVotes === true;
     projects = data.projects;
-    document.querySelector(".intro-copy .section-kicker").textContent = `${data.totalProjects} IDEEN · EINE STIMME`;
+    document.querySelector(".intro-copy .section-kicker").textContent = `${data.totalProjects} IDEEN · ${allowRepeatVotes ? "TESTMODUS" : "EINE STIMME"}`;
+    document.querySelector("#vote-mode-notice").classList.toggle("hidden", !allowRepeatVotes);
+    document.querySelector("#privacy-note").textContent = allowRepeatVotes
+      ? "Testmodus aktiv: Mehrfachstimmen sind erlaubt."
+      : "Eine Stimme pro Browser. Keine Anmeldung nötig.";
+    restoreSavedBallot();
   } catch (error) {
     voteError.textContent = error.message;
     search.disabled = true;
@@ -120,7 +132,7 @@ voteForm.addEventListener("submit", async (event) => {
   voteButton.disabled = true;
   voteButton.classList.add("loading");
   try {
-    const voterId = localStorage.getItem(voterIdKey) || newVoterId();
+    const voterId = allowRepeatVotes ? newVoterId() : localStorage.getItem(voterIdKey) || newVoterId();
     const response = await fetch("/api/votes", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -128,10 +140,20 @@ voteForm.addEventListener("submit", async (event) => {
     });
     const result = await response.json();
     if (!response.ok) throw new Error(result.error || "Deine Stimme konnte nicht gespeichert werden.");
-    localStorage.setItem(voterIdKey, voterId);
-    localStorage.setItem(ballotKey, JSON.stringify({ projectId: selectedProject.id, projectName: selectedProject.name }));
+    if (!allowRepeatVotes) {
+      localStorage.setItem(voterIdKey, voterId);
+      localStorage.setItem(ballotKey, JSON.stringify({ projectId: selectedProject.id, projectName: selectedProject.name }));
+    }
     document.querySelector("#voted-project").textContent = `Deine Stimme zählt für ${selectedProject.name}.`;
-    voteForm.classList.add("hidden");
+    if (allowRepeatVotes) {
+      document.querySelector("#voted-state strong").textContent = "Stimme gespeichert — weiter testen!";
+      selectedProject = null;
+      search.value = "";
+      voteButton.disabled = true;
+      setSuggestionsOpen(false);
+    } else {
+      voteForm.classList.add("hidden");
+    }
     votedState.classList.remove("hidden");
   } catch (error) {
     voteError.textContent = error.message;
@@ -141,15 +163,20 @@ voteForm.addEventListener("submit", async (event) => {
   }
 });
 
-try {
-  const savedBallot = JSON.parse(localStorage.getItem(ballotKey) || "null");
-  if (savedBallot) {
-    document.querySelector("#voted-project").textContent = `Deine Stimme zählt für ${savedBallot.projectName}.`;
-    voteForm.classList.add("hidden");
-    votedState.classList.remove("hidden");
+function restoreSavedBallot() {
+  try {
+    const savedBallot = JSON.parse(localStorage.getItem(ballotKey) || "null");
+    if (savedBallot && !allowRepeatVotes) {
+      document.querySelector("#voted-project").textContent = `Deine Stimme zählt für ${savedBallot.projectName}.`;
+      voteForm.classList.add("hidden");
+      votedState.classList.remove("hidden");
+    } else {
+      voteForm.classList.remove("hidden");
+      votedState.classList.add("hidden");
+    }
+  } catch (error) {
+    console.error("Gespeicherte Stimmabgabe konnte nicht gelesen werden.", error);
   }
-} catch (error) {
-  console.error("Gespeicherte Stimmabgabe konnte nicht gelesen werden.", error);
 }
 
 loadProjects();

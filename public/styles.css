@@ -58,6 +58,7 @@ button:focus-visible, a:focus-visible, input:focus-visible { outline: 3px solid 
 .vote-panel-heading { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-bottom: 28px; }
 .vote-panel-heading h2 { margin: 8px 0 0; font-size: 25px; font-weight: 600; }
 .vote-icon { display: grid; width: 40px; height: 40px; place-items: center; border: 1px solid #c2e5e7; border-radius: 50%; color: #43aab3; font-size: 19px; }
+.test-mode-notice { margin: -9px 0 23px; padding: 10px 12px; border-left: 3px solid #d69a3d; background: #fff7e8; color: #80540d; font-size: 10px; font-weight: 700; letter-spacing: .055em; }
 #vote-form label { display: block; margin-bottom: 10px; color: #173f5b; font-size: 14px; font-weight: 700; }
 .search-wrap { position: relative; }
 .search-icon { position: absolute; z-index: 1; top: 17px; left: 17px; width: 14px; height: 14px; border: 1.8px solid #4c7891; border-radius: 50%; pointer-events: none; }

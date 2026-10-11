@@ -5,6 +5,7 @@ const path = require("node:path");
 
 const PORT = Number(process.env.PORT || 3000);
 const HOST = process.env.HOST || "0.0.0.0";
+const ALLOW_REPEAT_VOTES = process.env.ALLOW_REPEAT_VOTES === "true";
 const ADMIN_KEY = process.env.PULSE_ADMIN_KEY || crypto.randomBytes(24).toString("base64url");
 const DATA_DIR = path.resolve(process.env.DATA_DIR || path.join(__dirname, "data"));
 const DATA_FILE = path.join(DATA_DIR, "polls.json");
@@ -179,6 +180,10 @@ async function handleApi(request, response, url) {
     return sendJson(response, 200, { projects, totalProjects: projects.length });
   }
 
+  if (request.method === "GET" && url.pathname === "/api/config") {
+    return sendJson(response, 200, { allowRepeatVotes: ALLOW_REPEAT_VOTES });
+  }
+
   if (request.method === "GET" && url.pathname === "/api/results") {
     return sendJson(response, 200, getProjectResults());
   }
@@ -192,14 +197,15 @@ async function handleApi(request, response, url) {
     if (typeof body.voterId !== "string" || !/^[a-f0-9-]{20,64}$/i.test(body.voterId)) {
       return sendJson(response, 400, { error: "A valid voter ID is required." });
     }
-    if (Object.hasOwn(projectVotes, body.voterId)) {
+    if (!ALLOW_REPEAT_VOTES && Object.hasOwn(projectVotes, body.voterId)) {
       return sendJson(response, 409, { error: "This browser has already cast its vote." });
     }
-    projectVotes[body.voterId] = projectId;
+    const voteId = ALLOW_REPEAT_VOTES ? crypto.randomUUID() : body.voterId;
+    projectVotes[voteId] = projectId;
     try {
       await persistJson(VOTES_FILE, projectVotes);
     } catch (error) {
-      delete projectVotes[body.voterId];
+      delete projectVotes[voteId];
       throw error;
     }
     publishProjectResults();
