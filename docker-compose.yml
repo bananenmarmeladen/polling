@@ -8,6 +8,7 @@ services:
     environment:
       PULSE_ADMIN_KEY: "${PULSE_ADMIN_KEY:?Set PULSE_ADMIN_KEY in .env}"
       DATA_DIR: /data
+      ALLOW_REPEAT_VOTES: "${ALLOW_REPEAT_VOTES:-false}"
     volumes:
       - pulse-data:/data
       - ./projects.json:/app/projects.json:ro

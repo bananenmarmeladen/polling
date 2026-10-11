@@ -49,6 +49,7 @@ On a fresh data directory, the app starts with exactly 153 committed proof-of-co
    ```
 
    This key is retained for the legacy poll-management API; participant voting does not require a key. Keep `.env` private and do not commit it.
+   For local testing only, you can also add `ALLOW_REPEAT_VOTES=true` to `.env`. The participant page will show a test-mode notice and allow repeat ballots. Leave it unset (or `false`) for a real poll.
 3. Build and start the Compose app:
 
    ```sh
