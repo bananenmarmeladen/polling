@@ -18,7 +18,7 @@ Open:
 - `http://localhost:3000/` to vote.
 - `http://localhost:3000/results` to show the live top-20 presentation chart.
 
-The default catalog is `projects.json`, containing `Projekt 001` through `Projekt 200`. Edit that file to replace the placeholder names. It can be a JSON array of strings or an array of objects such as:
+The default catalog is `projects.json`, containing 200 fictional German classical choir concert projects dated from 1996 through 2026 (at least six per year). Each project has a stable ID. Edit the names in that file to suit your event; keep the IDs unchanged so existing votes remain attached. It can be a JSON array of strings or an array of objects such as:
 
 ```json
 [
@@ -28,6 +28,8 @@ The default catalog is `projects.json`, containing `Projekt 001` through `Projek
 ```
 
 Project IDs must be unique. Do not remove or rename IDs with saved votes unless you have first backed up and cleared the vote data. To load another catalog file, set `PROJECTS_FILE=/path/to/projects.json`.
+
+On a fresh data directory, the app starts with exactly 153 committed proof-of-concept votes from `sample-votes.json`, spread across the first 20 projects. It copies these into `DATA_DIR/project-votes.json` on initial startup, and later votes persist there. Existing vote files are preserved and are never overwritten with the demo seed.
 
 ## Deploy on Unraid
 
@@ -46,7 +48,7 @@ Project IDs must be unique. Do not remove or rename IDs with saved votes unless 
    ```
 
 4. Open `http://<unraid-server-ip>:3000/` for voting and `http://<unraid-server-ip>:3000/results` on the presentation display.
-5. Project names are mounted from `projects.json`, so you can edit the file on Unraid and restart the container to load changes. Votes persist in the named `pulse-data` volume.
+5. Project names are mounted from `projects.json`, so you can edit the file on Unraid and restart the container to load changes. On a new `pulse-data` volume, 153 sample votes are loaded automatically; votes then persist in that volume.
 
 Put the app behind an HTTPS reverse proxy before exposing it to the internet. For a public vote, note that browser local storage and an anonymous voter ID prevent accidental repeat voting, but are not identity verification and can be cleared or spoofed. Add authentication or stronger abuse controls if the vote needs to be binding.
 

@@ -9,6 +9,7 @@ const ADMIN_KEY = process.env.PULSE_ADMIN_KEY || crypto.randomBytes(24).toString
 const DATA_DIR = path.resolve(process.env.DATA_DIR || path.join(__dirname, "data"));
 const DATA_FILE = path.join(DATA_DIR, "polls.json");
 const VOTES_FILE = path.join(DATA_DIR, "project-votes.json");
+const SAMPLE_VOTES_FILE = path.join(__dirname, "sample-votes.json");
 const PROJECTS_FILE = path.resolve(process.env.PROJECTS_FILE || path.join(__dirname, "projects.json"));
 const publicDir = path.join(__dirname, "public");
 const clients = new Map();
@@ -21,7 +22,6 @@ let projectVotes = {};
 async function loadRooms() {
   await fs.mkdir(DATA_DIR, { recursive: true });
   rooms = await readStoredJson(DATA_FILE, {});
-  projectVotes = await readStoredJson(VOTES_FILE, {});
 
   const projectFile = JSON.parse(await fs.readFile(PROJECTS_FILE, "utf8"));
   const configuredProjects = Array.isArray(projectFile) ? projectFile : projectFile.projects;
@@ -37,11 +37,23 @@ async function loadRooms() {
   if (new Set(projects.map((project) => project.id)).size !== projects.length) {
     throw new Error("Project IDs in the project list must be unique.");
   }
+
+  let hasSavedVotes = true;
+  try {
+    await fs.access(VOTES_FILE);
+  } catch (error) {
+    if (error.code !== "ENOENT") throw error;
+    hasSavedVotes = false;
+  }
+  projectVotes = hasSavedVotes
+    ? await readStoredJson(VOTES_FILE, {})
+    : await readStoredJson(SAMPLE_VOTES_FILE, {});
   for (const projectId of Object.values(projectVotes)) {
     if (!projects.some((project) => project.id === projectId)) {
       throw new Error(`Saved vote references unknown project "${projectId}". Update projects.json without removing projects that have votes.`);
     }
   }
+  if (!hasSavedVotes) await persistJson(VOTES_FILE, projectVotes);
 }
 
 async function readStoredJson(filePath, fallback) {
