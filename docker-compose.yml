@@ -1,0 +1,16 @@
+services:
+  pulse:
+    build: .
+    container_name: pulse
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      PULSE_ADMIN_KEY: "${PULSE_ADMIN_KEY:?Set PULSE_ADMIN_KEY in .env}"
+      DATA_DIR: /data
+    volumes:
+      - pulse-data:/data
+
+volumes:
+  pulse-data:
+    name: pulse-data

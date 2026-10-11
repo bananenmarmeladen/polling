@@ -1,0 +1,126 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="theme-color" content="#11131b">
+    <meta name="description" content="A live polling space, hosted by you.">
+    <title>Pulse — your room, your conversation</title>
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+    <link rel="stylesheet" href="/styles.css">
+    <script src="/app.js" defer></script>
+  </head>
+  <body>
+    <div class="shell">
+      <header class="topbar">
+        <a class="brand" href="/" aria-label="Pulse home">
+          <span class="brand-mark" aria-hidden="true"><span></span><span></span><span></span><span></span></span>
+          <span>pulse<span class="brand-period">.</span></span>
+        </a>
+        <div class="topbar-note"><span class="status-dot"></span> YOUR SPACE, LIVE</div>
+        <button id="host-key-button" class="topbar-action" type="button">Host settings <span aria-hidden="true">↗</span></button>
+      </header>
+
+      <main>
+        <section id="welcome-view" class="welcome-view">
+          <div class="hero">
+            <div class="hero-copy">
+              <div class="eyebrow"><span class="eyebrow-line"></span> A LITTLE MORE INTERACTIVE</div>
+              <h1>Good talks go<br>both <span class="accent-word">ways.</span></h1>
+              <p class="hero-description">Ask the room. See what everyone thinks.<br>A live polling space, hosted by you.</p>
+              <div class="hero-actions">
+                <button class="button button-primary" id="create-first-poll" type="button">Create your first poll <span aria-hidden="true">↗</span></button>
+                <button class="button button-quiet" id="join-poll" type="button">I have a room code</button>
+              </div>
+              <div class="hero-footnote"><span class="spark">✳</span> No accounts. No noise. Just your people.</div>
+            </div>
+            <div class="hero-art" aria-hidden="true">
+              <div class="orbit orbit-one"></div>
+              <div class="orbit orbit-two"></div>
+              <div class="floating-note note-top"><span class="note-icon">✳</span><span>Every voice<br><strong>in the room.</strong></span></div>
+              <div class="poll-card">
+                <div class="poll-card-top"><span>THE ROOM SAYS</span><span class="live-tag"><i></i> LIVE</span></div>
+                <div class="mini-question">What makes a<br>great idea?</div>
+                <div class="mini-answer"><span class="answer-bullet violet"></span><span>Solves a real problem</span><span class="answer-percent">48%</span><div class="answer-track"><i style="width:48%"></i></div></div>
+                <div class="mini-answer"><span class="answer-bullet orange"></span><span>Surprises you</span><span class="answer-percent">32%</span><div class="answer-track"><i style="width:32%"></i></div></div>
+                <div class="mini-answer"><span class="answer-bullet green"></span><span>Brings people together</span><span class="answer-percent">20%</span><div class="answer-track"><i style="width:20%"></i></div></div>
+                <div class="poll-card-foot"><span class="avatar-stack"><i>A</i><i>M</i><i>J</i><i>+</i></span><span>24 people have weighed in</span></div>
+              </div>
+              <div class="floating-note note-bottom"><span class="tiny-wave">↗</span><span>Better conversations<br><strong>start with a question.</strong></span></div>
+              <span class="art-star star-one">✳</span><span class="art-star star-two">✳</span>
+            </div>
+          </div>
+          <div class="feature-strip">
+            <span>BUILT FOR THE MOMENT</span><span class="feature-item"><b>01</b> Ask anything</span><span class="feature-item"><b>02</b> Everyone joins in</span><span class="feature-item"><b>03</b> Watch it happen</span><span class="strip-last">YOUR SERVER. YOUR RULES.</span>
+          </div>
+        </section>
+
+        <section id="host-view" class="workspace-view hidden">
+          <div class="workspace-heading">
+            <div><div class="eyebrow"><span class="eyebrow-line"></span> YOUR HOST STUDIO</div><h1>Make it a <span class="accent-word">conversation.</span></h1></div>
+            <button class="back-link" data-home type="button">← Back to home</button>
+          </div>
+          <div id="host-key-prompt" class="key-prompt hidden">
+            <div class="section-kicker">HOST ACCESS</div>
+            <h2>Welcome to your studio.</h2>
+            <p>Your host key keeps poll controls yours. It was printed in the server startup log.</p>
+            <form id="host-key-form" class="inline-form"><label class="sr-only" for="host-key-input">Host key</label><input id="host-key-input" type="password" placeholder="Paste your host key" autocomplete="current-password" required><button class="button button-primary" type="submit">Unlock studio <span>↗</span></button></form>
+            <p id="host-key-error" class="form-error" role="alert"></p>
+          </div>
+          <div id="host-studio" class="studio-grid hidden">
+            <section class="panel create-panel">
+              <div class="panel-heading"><div><div class="section-kicker">NEW QUESTION</div><h2>Start a poll</h2></div><span class="panel-icon">✳</span></div>
+              <form id="create-poll-form">
+                <label for="poll-title">Session name <span>OPTIONAL FEELING, GREAT CONTEXT</span></label>
+                <input id="poll-title" name="title" maxlength="60" placeholder="e.g. Friday team retro" required>
+                <label for="poll-question">Your question <span>MAKE IT YOURS</span></label>
+                <textarea id="poll-question" name="question" maxlength="160" placeholder="What should we focus on next?" required rows="3"></textarea>
+                <label for="poll-options">Answer options <span>ONE PER LINE · 2–8 OPTIONS</span></label>
+                <textarea id="poll-options" name="options" placeholder="Option one&#10;Option two&#10;Option three" required rows="5"></textarea>
+                <p id="create-error" class="form-error" role="alert"></p>
+                <button class="button button-primary full-button" type="submit">Open the room <span>↗</span></button>
+              </form>
+            </section>
+            <section id="host-live-panel" class="panel live-panel">
+              <div id="host-empty-state" class="empty-state">
+                <div class="empty-illustration"><span>?</span><i></i><b></b></div>
+                <div class="section-kicker">THE ROOM IS YOURS</div><h2>It starts with a question.</h2>
+                <p>Write one that gets people thinking. Your audience joins instantly—no account, no app.</p>
+                <div class="empty-checks"><span>↗ One link to share</span><span>✳ Results, as they happen</span></div>
+              </div>
+              <div id="host-live-content" class="hidden">
+                <div class="room-heading"><div><div class="section-kicker">YOUR LIVE ROOM</div><h2 id="host-live-title"></h2></div><span id="room-status" class="room-status"></span></div>
+                <p id="host-live-question" class="live-question"></p>
+                <div class="share-box"><div><span class="section-kicker">INVITE YOUR AUDIENCE</span><strong id="room-code"></strong></div><button id="copy-link-button" class="button button-outline" type="button">Copy invite link</button></div>
+                <div class="results-heading"><span class="section-kicker">LIVE RESULTS</span><span id="vote-count">0 votes</span></div>
+                <div id="host-results" class="results-list"></div>
+                <div class="host-controls"><button id="close-poll-button" class="button button-outline" type="button">Close voting</button><button id="reset-poll-button" class="text-button" type="button">Reset votes</button></div>
+              </div>
+            </section>
+          </div>
+        </section>
+
+        <section id="audience-view" class="workspace-view audience-view hidden">
+          <div class="audience-topline"><a class="back-link" href="/">← pulse.</a><span class="audience-label"><i></i> LIVE ROOM</span></div>
+          <div id="join-prompt" class="audience-card join-card">
+            <div class="section-kicker">COME ON IN</div><h1>Find your <span class="accent-word">room.</span></h1>
+            <p>Enter the six-letter code from your host to join the conversation.</p>
+            <form id="room-code-form" class="room-code-form"><label class="sr-only" for="room-code-input">Room code</label><input id="room-code-input" maxlength="6" placeholder="ABC123" autocomplete="off" required><button class="button button-primary" type="submit">Join room <span>↗</span></button></form>
+            <p id="join-error" class="form-error" role="alert"></p>
+          </div>
+          <div id="audience-poll" class="audience-card poll-audience-card hidden">
+            <div class="audience-poll-head"><div class="section-kicker" id="audience-title"></div><span id="audience-status" class="room-status"></span></div>
+            <h1 id="audience-question"></h1><p class="audience-instruction" id="audience-instruction">Choose the answer that feels right to you.</p>
+            <div id="audience-options" class="audience-options"></div>
+            <button id="submit-vote" class="button button-primary full-button" type="button">Cast your vote <span>↗</span></button>
+            <p id="audience-error" class="form-error" role="alert"></p>
+            <div id="audience-results" class="audience-results hidden"><div class="results-heading"><span class="section-kicker">THE ROOM SAYS</span><span id="audience-vote-count"></span></div><div id="audience-results-list" class="results-list"></div></div>
+            <div class="audience-footer"><span class="brand-mark small-mark"><span></span><span></span><span></span><span></span></span> A space to think out loud.</div>
+          </div>
+        </section>
+      </main>
+      <footer class="site-footer"><span>MADE FOR THE MOMENTS THAT MATTER.</span><span>IN YOUR CORNER OF THE INTERNET <b>✳</b></span></footer>
+    </div>
+    <div id="toast" class="toast" role="status" aria-live="polite"></div>
+  </body>
+</html>
