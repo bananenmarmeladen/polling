@@ -8,6 +8,7 @@
     <title>Mitstimmen — Cantus Domus</title>
     <link rel="icon" href="/cantus-domus-logo.svg" type="image/svg+xml">
     <link rel="stylesheet" href="/styles.css">
+    <script src="/vendor/socket.io.min.js" defer></script>
     <script src="/app.js" defer></script>
   </head>
   <body>
@@ -33,9 +34,9 @@
 
       <section id="abstimmen" class="content-layout">
         <div class="intro-copy">
-          <p class="section-kicker">200 IDEEN · EINE STIMME</p>
+          <p class="section-kicker">DEINE IDEE · DEINE STIMME</p>
           <h2>Was sollen wir<br><span>gemeinsam</span> möglich machen?</h2>
-          <p>Stöbere durch die Projektideen oder tippe den Namen direkt ein. Jede Person kann einmal abstimmen — das Ergebnis wächst live mit jeder Stimme.</p>
+          <p>Schlag dein eigenes Konzertprojekt vor oder greif eine bestehende Idee aus der Liste auf. Neue Vorschläge stehen allen sofort als Autocomplete zur Verfügung.</p>
           <a class="results-link" href="/results">Live-Ergebnisse ansehen <span aria-hidden="true">↗</span></a>
         </div>
 
@@ -43,22 +44,22 @@
           <div class="vote-panel-heading">
             <div>
               <p class="section-kicker">DEINE STIMME</p>
-              <h2 id="vote-heading">Projekt auswählen</h2>
+              <h2 id="vote-heading">Projekt vorschlagen</h2>
             </div>
             <span class="vote-icon" aria-hidden="true">✳</span>
           </div>
 
-          <p id="vote-mode-notice" class="test-mode-notice hidden">LOKALER TESTMODUS · MEHRFACHSTIMMEN ERLAUBT</p>
+          <p id="vote-mode-notice" class="test-mode-notice">TESTMODUS · MEHRFACHSTIMMEN ERLAUBT</p>
           <form id="vote-form" autocomplete="off">
-            <label for="project-search">Welches Projekt unterstützt du?</label>
+            <label for="project-search">Wie heißt dein Konzertprojekt?</label>
             <div class="search-wrap">
               <span class="search-icon" aria-hidden="true"></span>
-              <input id="project-search" name="project" type="search" placeholder="Projekt suchen …" role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="project-suggestions" aria-describedby="search-help" required>
+              <input id="project-search" name="project" type="text" placeholder="Idee eingeben oder Vorschlag auswählen …" role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="project-suggestions" aria-describedby="search-help" maxlength="48" required>
               <div id="project-suggestions" class="suggestions hidden" role="listbox" aria-label="Projektvorschläge"></div>
             </div>
-            <p id="search-help" class="input-help">Tippe einen Namen oder scrolle durch die Vorschläge.</p>
+            <p id="search-help" class="input-help">Freitext eingeben — vorhandene Vorschläge erscheinen während der Eingabe.</p>
             <p id="vote-error" class="form-error" role="alert"></p>
-            <button id="vote-button" class="vote-button" type="submit" disabled>Stimme abgeben <span aria-hidden="true">↗</span></button>
+            <button id="vote-button" class="vote-button" type="submit" disabled>Idee einreichen <span aria-hidden="true">↗</span></button>
           </form>
 
           <div id="voted-state" class="voted-state hidden" role="status">

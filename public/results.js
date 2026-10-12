@@ -1,136 +1,104 @@
-const connectionStatus = document.querySelector("#connection-status");
-const voteTotal = document.querySelector("#total-votes");
-const chartCanvas = document.querySelector("#results-chart");
-const resultsError = document.querySelector("#results-error");
+const canvas = document.querySelector("#word-cloud");
+const colors = [
+  "#155E63", "#0F766E", "#1D4E89", "#245C8C", "#256D3A", "#3D6B42",
+  "#426B73", "#355B80", "#456B3F", "#1F6B5C", "#294A70", "#32765D",
+];
+let words = [];
+let renderFrame = 0;
 
-const valueLabels = {
-  id: "valueLabels",
-  afterDatasetsDraw(chart) {
-    const { ctx } = chart;
-    const bars = chart.getDatasetMeta(0).data;
-    ctx.save();
-    ctx.fillStyle = "#ffffff";
-    ctx.font = '600 13px "Domus", sans-serif';
-    ctx.textAlign = "center";
-    ctx.textBaseline = "bottom";
-    bars.forEach((bar, index) => {
-      const count = chart.data.datasets[0].data[index];
-      if (count > 0) ctx.fillText(String(count), bar.x, bar.y - 7);
-    });
-    ctx.restore();
-  },
-};
+function colorForWord(word) {
+  let hash = 0;
+  for (const character of word) hash = (hash * 31 + character.codePointAt(0)) | 0;
+  return colors[(hash >>> 0) % colors.length];
+}
 
-let chart;
-
-function buildChart() {
-  if (typeof Chart === "undefined") {
-    resultsError.textContent = "Das Diagramm konnte nicht geladen werden. Bitte lade die Seite neu.";
-    return null;
+function drawWordCloud() {
+  const width = window.innerWidth;
+  const height = window.innerHeight;
+  const pixelRatio = Math.min(window.devicePixelRatio || 1, 2);
+  const cloudWidth = Math.round(width * 0.92);
+  const cloudHeight = Math.round(height * 0.8);
+  canvas.width = Math.round(cloudWidth * pixelRatio);
+  canvas.height = Math.round(cloudHeight * pixelRatio);
+  canvas.style.width = `${cloudWidth}px`;
+  canvas.style.height = `${cloudHeight}px`;
+  if (!words.length) {
+    canvas.getContext("2d").clearRect(0, 0, canvas.width, canvas.height);
+    return;
   }
-  return new Chart(chartCanvas, {
-    type: "bar",
-    data: {
-      labels: [],
-      datasets: [{
-        label: "Stimmen",
-        data: [],
-        backgroundColor(context) {
-          const { chart: currentChart } = context;
-          const { ctx, chartArea } = currentChart;
-          if (!chartArea) return "#53c6cb";
-          const gradient = ctx.createLinearGradient(0, chartArea.bottom, 0, chartArea.top);
-          gradient.addColorStop(0, "#2a8eb3");
-          gradient.addColorStop(1, "#70d6d2");
-          return gradient;
-        },
-        borderRadius: 5,
-        borderSkipped: false,
-        maxBarThickness: 48,
-        minBarLength: 3,
-      }],
-    },
-    plugins: [valueLabels],
-    options: {
-      maintainAspectRatio: false,
-      animation: { duration: 450 },
-      layout: { padding: { top: 28, left: 6, right: 10, bottom: 3 } },
-      plugins: {
-        legend: { display: false },
-        tooltip: {
-          backgroundColor: "#f8fbfd",
-          titleColor: "#07507a",
-          bodyColor: "#07507a",
-          borderColor: "#9fd7db",
-          borderWidth: 1,
-          padding: 12,
-          displayColors: false,
-          callbacks: { label: (context) => `${context.raw} ${context.raw === 1 ? "Stimme" : "Stimmen"}` },
-        },
-      },
-      scales: {
-        x: {
-          grid: { display: false },
-          border: { color: "#36526a" },
-          ticks: {
-            color: "#d5e2eb",
-            autoSkip: false,
-            minRotation: 50,
-            maxRotation: 65,
-            padding: 9,
-            font: { family: "Domus, sans-serif", size: 11 },
-          },
-        },
-        y: {
-          beginAtZero: true,
-          suggestedMax: 1,
-          border: { display: false },
-          grid: { color: "rgba(181, 208, 222, .14)", drawTicks: false },
-          ticks: {
-            color: "#a8bdcb",
-            precision: 0,
-            padding: 10,
-            font: { family: "Domus, sans-serif", size: 11 },
-          },
-        },
-      },
-    },
+  if (typeof window.WordCloud !== "function") {
+    console.error("Die Wortwolken-Bibliothek konnte nicht geladen werden.");
+    return;
+  }
+  WordCloud.stop();
+  if (!WordCloud.isSupported) {
+    console.error("Dieser Browser unterstützt die Live-Wortwolke nicht.");
+    return;
+  }
+
+  const averageLength = words.reduce((total, word) => total + word.name.length, 0) / words.length;
+  const densityFont = Math.sqrt((cloudWidth * cloudHeight * 0.5) / (words.length * averageLength * 0.68 * 1.2));
+  const minFont = Math.max(3, Math.min(18, densityFont * 0.72));
+  const maxFont = Math.min(cloudWidth * 0.1, cloudHeight * 0.18, 100);
+  const gridScale = words.length > 300 ? 1 : pixelRatio;
+  const list = words.map(({ name, votes }) => {
+    const fontSize = words.length === 1
+      ? maxFont
+      : Math.min(maxFont, minFont + densityFont * 0.3 * Math.log2(votes));
+    return [name, fontSize];
+  });
+
+  WordCloud(canvas, {
+    list,
+    fontFamily: 'Domus, "Avenir Next", sans-serif',
+    fontWeight: "700",
+    color: colorForWord,
+    backgroundColor: "#ffffff",
+    clearCanvas: true,
+    gridSize: Math.max(4, Math.round(Math.min(cloudWidth, cloudHeight) / Math.max(160, Math.sqrt(words.length) * 12))) * gridScale,
+    weightFactor: (fontSize) => fontSize * pixelRatio,
+    minSize: pixelRatio,
+    shuffle: false,
+    rotateRatio: 0,
+    shape: "circle",
+    ellipticity: 0.8,
+    shrinkToFit: true,
   });
 }
 
-function updateResults(results) {
-  if (!chart) return;
-  const ranking = Array.isArray(results.top20) ? results.top20.slice(0, 20) : [];
-  chart.data.labels = ranking.map((project) => project.name);
-  chart.data.datasets[0].data = ranking.map((project) => project.votes);
-  chart.update();
-  voteTotal.textContent = Number(results.totalVotes || 0).toLocaleString("de-DE");
-  resultsError.textContent = "";
-  document.title = `${voteTotal.textContent} Stimmen — Cantus Domus`;
+function setWords(results) {
+  words = Array.isArray(results.words) ? results.words : [];
+  document.title = words.length
+    ? `${words.length} Konzertideen — Cantus Domus`
+    : "Wortwolke — Cantus Domus";
+  drawWordCloud();
 }
 
-function setConnection(connected) {
-  connectionStatus.classList.toggle("connected", connected);
-  connectionStatus.innerHTML = connected
-    ? "<i></i> LIVE AKTUALISIERT"
-    : "<i></i> VERBINDUNG WIRD HERGESTELLT";
+function resize() {
+  scheduleRender();
 }
 
-chart = buildChart();
-const socket = io();
-socket.on("connect", () => setConnection(true));
-socket.on("disconnect", () => setConnection(false));
-socket.on("connect_error", () => {
-  setConnection(false);
-  resultsError.textContent = "Die Live-Verbindung ist unterbrochen. Es wird erneut verbunden.";
-});
-socket.on("results", updateResults);
+function scheduleRender() {
+  cancelAnimationFrame(renderFrame);
+  renderFrame = requestAnimationFrame(drawWordCloud);
+}
 
-document.querySelector("#fullscreen-button").addEventListener("click", async () => {
-  try {
-    if (document.fullscreenElement) await document.exitFullscreen();
-    else await document.documentElement.requestFullscreen();
-  } catch (error) {
-    resultsError.textContent = `Vollbild konnte nicht aktiviert werden: ${error.message}`;
-  }
+const liveUpdates = io();
+liveUpdates.on("results", (results) => {
+  setWords(results);
+  scheduleRender();
 });
+liveUpdates.on("connect_error", (error) => {
+  console.error("Die Wortwolke konnte keine Live-Verbindung herstellen.", error);
+});
+window.addEventListener("resize", resize, { passive: true });
+document.fonts.ready.then(scheduleRender);
+
+fetch("/api/results")
+  .then(async (response) => {
+    const results = await response.json();
+    if (!response.ok) throw new Error(results.error || "Ergebnisse konnten nicht geladen werden.");
+    setWords(results);
+    scheduleRender();
+  })
+  .catch((error) => console.error("Die Ergebnisse konnten nicht geladen werden.", error));

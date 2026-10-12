@@ -4,13 +4,12 @@ const voteButton = document.querySelector("#vote-button");
 const voteError = document.querySelector("#vote-error");
 const voteForm = document.querySelector("#vote-form");
 const votedState = document.querySelector("#voted-state");
-const ballotKey = "cantus-domus-project-ballot";
 const voterIdKey = "cantus-domus-voter-id";
+const maxProjectNameLength = 48;
 
 let projects = [];
-let selectedProject = null;
 let activeSuggestion = -1;
-let allowRepeatVotes = false;
+let allowRepeatVotes = true;
 
 function newVoterId() {
   if (typeof crypto.randomUUID === "function") return crypto.randomUUID();
@@ -22,18 +21,17 @@ function setSuggestionsOpen(open) {
   search.setAttribute("aria-expanded", String(open));
 }
 
-function chooseProject(project) {
-  selectedProject = project;
-  search.value = project.name;
-  setSuggestionsOpen(false);
-  voteButton.disabled = false;
-  voteError.textContent = "";
+function canonicalizeInput(value) {
+  return value.trim().replace(/\s+/g, " ").toLocaleUpperCase("de-DE").slice(0, maxProjectNameLength);
+}
+
+function updateVoteButton() {
+  voteButton.disabled = !search.value.trim();
 }
 
 function renderSuggestions(query = "") {
-  const normalizedQuery = query.trim().toLocaleLowerCase("de");
-  const matches = projects
-    .filter((project) => !normalizedQuery || project.name.toLocaleLowerCase("de").includes(normalizedQuery));
+  const normalizedQuery = canonicalizeInput(query);
+  const matches = projects.filter((project) => !normalizedQuery || project.name.includes(normalizedQuery));
   suggestions.replaceChildren();
   activeSuggestion = -1;
 
@@ -44,31 +42,29 @@ function renderSuggestions(query = "") {
     option.setAttribute("role", "option");
     option.textContent = project.name;
     option.addEventListener("pointerdown", (event) => event.preventDefault());
-    option.addEventListener("click", () => chooseProject(project));
+    option.addEventListener("click", () => {
+      search.value = project.name;
+      setSuggestionsOpen(false);
+      updateVoteButton();
+    });
     suggestions.append(option);
   }
 
   if (matches.length === 0) {
     const empty = document.createElement("p");
     empty.className = "suggestions-empty";
-    empty.textContent = "Kein passendes Projekt gefunden.";
+    empty.textContent = "Neuer Vorschlag — mit deiner Stimme hinzufügen.";
     suggestions.append(empty);
   }
   setSuggestionsOpen(true);
 }
 
-function moveSuggestion(direction) {
-  const options = [...suggestions.querySelectorAll(".suggestion-option")];
-  if (options.length === 0) return;
-  activeSuggestion = (activeSuggestion + direction + options.length) % options.length;
-  options.forEach((option, index) => {
-    option.classList.toggle("active", index === activeSuggestion);
-    option.setAttribute("aria-selected", String(index === activeSuggestion));
-  });
-  options[activeSuggestion].scrollIntoView({ block: "nearest" });
+function updateSuggestions(latestSuggestions) {
+  projects = latestSuggestions;
+  if (!suggestions.classList.contains("hidden")) renderSuggestions(search.value);
 }
 
-async function loadProjects() {
+async function loadPageData() {
   try {
     const [configResponse, projectsResponse] = await Promise.all([
       fetch("/api/config"),
@@ -77,14 +73,14 @@ async function loadProjects() {
     const config = await configResponse.json();
     const data = await projectsResponse.json();
     if (!configResponse.ok) throw new Error(config.error || "Die Abstimmungseinstellungen konnten nicht geladen werden.");
-    if (!projectsResponse.ok) throw new Error(data.error || "Die Projektliste konnte nicht geladen werden.");
+    if (!projectsResponse.ok) throw new Error(data.error || "Die Vorschläge konnten nicht geladen werden.");
+
     allowRepeatVotes = config.allowRepeatVotes === true;
-    projects = data.projects;
-    document.querySelector(".intro-copy .section-kicker").textContent = `${data.totalProjects} IDEEN · ${allowRepeatVotes ? "TESTMODUS" : "EINE STIMME"}`;
     document.querySelector("#vote-mode-notice").classList.toggle("hidden", !allowRepeatVotes);
     document.querySelector("#privacy-note").textContent = allowRepeatVotes
       ? "Testmodus aktiv: Mehrfachstimmen sind erlaubt."
       : "Eine Stimme pro Browser. Keine Anmeldung nötig.";
+    updateSuggestions(data.projects);
     restoreSavedBallot();
   } catch (error) {
     voteError.textContent = error.message;
@@ -95,23 +91,32 @@ async function loadProjects() {
 
 search.addEventListener("focus", () => renderSuggestions(search.value));
 search.addEventListener("input", () => {
-  selectedProject = null;
-  voteButton.disabled = true;
+  const start = search.selectionStart;
+  const end = search.selectionEnd;
+  const uppercase = search.value.toLocaleUpperCase("de-DE").slice(0, maxProjectNameLength);
+  if (search.value !== uppercase) {
+    search.value = uppercase;
+    search.setSelectionRange(Math.min(start, uppercase.length), Math.min(end, uppercase.length));
+  }
+  updateVoteButton();
   renderSuggestions(search.value);
 });
 
 search.addEventListener("keydown", (event) => {
-  if (event.key === "ArrowDown") {
+  if (event.key === "ArrowDown" || event.key === "ArrowUp") {
     event.preventDefault();
-    moveSuggestion(1);
-  } else if (event.key === "ArrowUp") {
-    event.preventDefault();
-    moveSuggestion(-1);
+    const options = [...suggestions.querySelectorAll(".suggestion-option")];
+    if (!options.length) return;
+    const direction = event.key === "ArrowDown" ? 1 : -1;
+    activeSuggestion = (activeSuggestion + direction + options.length) % options.length;
+    options.forEach((option, index) => {
+      option.classList.toggle("active", index === activeSuggestion);
+      option.setAttribute("aria-selected", String(index === activeSuggestion));
+    });
+    options[activeSuggestion].scrollIntoView({ block: "nearest" });
   } else if (event.key === "Enter" && activeSuggestion >= 0) {
     event.preventDefault();
-    const option = suggestions.querySelectorAll(".suggestion-option")[activeSuggestion];
-    const project = projects.find((candidate) => candidate.name === option?.textContent);
-    if (project) chooseProject(project);
+    suggestions.querySelectorAll(".suggestion-option")[activeSuggestion]?.click();
   } else if (event.key === "Escape") {
     setSuggestionsOpen(false);
   }
@@ -123,8 +128,9 @@ document.addEventListener("click", (event) => {
 
 voteForm.addEventListener("submit", async (event) => {
   event.preventDefault();
-  if (!selectedProject) {
-    voteError.textContent = "Bitte wähle ein Projekt aus der Vorschlagsliste.";
+  const name = canonicalizeInput(search.value);
+  if (!name) {
+    voteError.textContent = "Gib einen Projekt-Namen ein.";
     return;
   }
 
@@ -136,47 +142,54 @@ voteForm.addEventListener("submit", async (event) => {
     const response = await fetch("/api/votes", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ projectId: selectedProject.id, voterId }),
+      body: JSON.stringify({ name, voterId }),
     });
     const result = await response.json();
     if (!response.ok) throw new Error(result.error || "Deine Stimme konnte nicht gespeichert werden.");
-    if (!allowRepeatVotes) {
-      localStorage.setItem(voterIdKey, voterId);
-      localStorage.setItem(ballotKey, JSON.stringify({ projectId: selectedProject.id, projectName: selectedProject.name }));
-    }
-    document.querySelector("#voted-project").textContent = `Deine Stimme zählt für ${selectedProject.name}.`;
+    if (!allowRepeatVotes) localStorage.setItem(voterIdKey, voterId);
+
+    document.querySelector("#voted-project").textContent = `Deine Stimme zählt für ${name}.`;
+    document.querySelector("#voted-state strong").textContent = allowRepeatVotes
+      ? "Stimme gespeichert — weiter testen!"
+      : "Danke für deine Stimme!";
+    votedState.classList.remove("hidden");
     if (allowRepeatVotes) {
-      document.querySelector("#voted-state strong").textContent = "Stimme gespeichert — weiter testen!";
-      selectedProject = null;
       search.value = "";
-      voteButton.disabled = true;
+      updateVoteButton();
       setSuggestionsOpen(false);
     } else {
       voteForm.classList.add("hidden");
     }
-    votedState.classList.remove("hidden");
   } catch (error) {
     voteError.textContent = error.message;
-    voteButton.disabled = false;
+    updateVoteButton();
   } finally {
     voteButton.classList.remove("loading");
   }
 });
 
 function restoreSavedBallot() {
+  if (allowRepeatVotes) {
+    voteForm.classList.remove("hidden");
+    return;
+  }
   try {
-    const savedBallot = JSON.parse(localStorage.getItem(ballotKey) || "null");
-    if (savedBallot && !allowRepeatVotes) {
-      document.querySelector("#voted-project").textContent = `Deine Stimme zählt für ${savedBallot.projectName}.`;
+    const savedBallot = localStorage.getItem(voterIdKey);
+    if (savedBallot) {
       voteForm.classList.add("hidden");
+      document.querySelector("#voted-state strong").textContent = "Danke für deine Stimme!";
+      document.querySelector("#voted-project").textContent = "Deine Stimme wurde bereits abgegeben.";
       votedState.classList.remove("hidden");
-    } else {
-      voteForm.classList.remove("hidden");
-      votedState.classList.add("hidden");
     }
   } catch (error) {
-    console.error("Gespeicherte Stimmabgabe konnte nicht gelesen werden.", error);
+    console.error("Der gespeicherte Abstimmungsstatus konnte nicht gelesen werden.", error);
   }
 }
 
-loadProjects();
+const liveUpdates = io();
+liveUpdates.on("suggestions", updateSuggestions);
+liveUpdates.on("connect_error", (error) => {
+  console.error("Die Live-Vorschläge konnten nicht verbunden werden.", error);
+});
+
+loadPageData();

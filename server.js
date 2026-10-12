@@ -5,56 +5,28 @@ const path = require("node:path");
 
 const PORT = Number(process.env.PORT || 3000);
 const HOST = process.env.HOST || "0.0.0.0";
-const ALLOW_REPEAT_VOTES = process.env.ALLOW_REPEAT_VOTES === "true";
+const ALLOW_REPEAT_VOTES = process.env.ALLOW_REPEAT_VOTES !== "false";
+const MAX_PROJECT_NAME_LENGTH = 48;
 const ADMIN_KEY = process.env.PULSE_ADMIN_KEY || crypto.randomBytes(24).toString("base64url");
 const DATA_DIR = path.resolve(process.env.DATA_DIR || path.join(__dirname, "data"));
 const DATA_FILE = path.join(DATA_DIR, "polls.json");
-const VOTES_FILE = path.join(DATA_DIR, "project-votes.json");
-const SAMPLE_VOTES_FILE = path.join(__dirname, "sample-votes.json");
-const PROJECTS_FILE = path.resolve(process.env.PROJECTS_FILE || path.join(__dirname, "projects.json"));
+const VOTES_FILE = path.join(DATA_DIR, "word-votes.json");
 const publicDir = path.join(__dirname, "public");
 const clients = new Map();
 const resultClients = new Set();
 let writeQueue = Promise.resolve();
 let rooms = {};
-let projects = [];
 let projectVotes = {};
 
 async function loadRooms() {
   await fs.mkdir(DATA_DIR, { recursive: true });
   rooms = await readStoredJson(DATA_FILE, {});
-
-  const projectFile = JSON.parse(await fs.readFile(PROJECTS_FILE, "utf8"));
-  const configuredProjects = Array.isArray(projectFile) ? projectFile : projectFile.projects;
-  if (!Array.isArray(configuredProjects) || configuredProjects.length === 0) {
-    throw new Error(`${PROJECTS_FILE} must contain a non-empty array of projects.`);
-  }
-  projects = configuredProjects.map((item, index) => {
-    const name = cleanText(typeof item === "string" ? item : item?.name, 120);
-    const id = cleanText(typeof item === "string" ? `project-${String(index + 1).padStart(3, "0")}` : item?.id, 80);
-    if (!name || !id) throw new Error(`Invalid project at index ${index}.`);
-    return { id, name };
-  });
-  if (new Set(projects.map((project) => project.id)).size !== projects.length) {
-    throw new Error("Project IDs in the project list must be unique.");
-  }
-
-  let hasSavedVotes = true;
-  try {
-    await fs.access(VOTES_FILE);
-  } catch (error) {
-    if (error.code !== "ENOENT") throw error;
-    hasSavedVotes = false;
-  }
-  projectVotes = hasSavedVotes
-    ? await readStoredJson(VOTES_FILE, {})
-    : await readStoredJson(SAMPLE_VOTES_FILE, {});
-  for (const projectId of Object.values(projectVotes)) {
-    if (!projects.some((project) => project.id === projectId)) {
-      throw new Error(`Saved vote references unknown project "${projectId}". Update projects.json without removing projects that have votes.`);
+  projectVotes = await readStoredJson(VOTES_FILE, {});
+  for (const value of Object.values(projectVotes)) {
+    if (typeof value !== "string" || !canonicalizeInput(value)) {
+      throw new Error(`${VOTES_FILE} contains an invalid submitted project name.`);
     }
   }
-  if (!hasSavedVotes) await persistJson(VOTES_FILE, projectVotes);
 }
 
 async function readStoredJson(filePath, fallback) {
@@ -84,24 +56,33 @@ function persistRooms() {
   return persistJson(DATA_FILE, rooms);
 }
 
-function getProjectResults() {
-  const counts = new Map(projects.map((project) => [project.id, 0]));
-  for (const projectId of Object.values(projectVotes)) {
-    counts.set(projectId, (counts.get(projectId) || 0) + 1);
+function getWordCloudData() {
+  const counts = new Map();
+  for (const name of Object.values(projectVotes)) {
+    counts.set(name, (counts.get(name) || 0) + 1);
   }
-  const ranking = projects
-    .map((project) => ({ ...project, votes: counts.get(project.id) || 0 }))
-    .sort((a, b) => b.votes - a.votes || a.name.localeCompare(b.name, "de", { numeric: true }));
+  const words = [...counts]
+    .map(([name, votes]) => ({ name, votes }))
+    .sort((a, b) => b.votes - a.votes || a.name.localeCompare(b.name, "de"));
   return {
     totalVotes: Object.keys(projectVotes).length,
-    totalProjects: projects.length,
-    top20: ranking.slice(0, 20),
+    words,
   };
 }
 
-function publishProjectResults() {
-  const message = getProjectResults();
-  for (const client of resultClients) client.emit("results", message);
+function getProjectSuggestions() {
+  return [...new Set(Object.values(projectVotes))]
+    .sort((a, b) => a.localeCompare(b, "de"))
+    .map((name) => ({ name }));
+}
+
+function publishProjectUpdates() {
+  const results = getWordCloudData();
+  const suggestions = getProjectSuggestions();
+  for (const client of resultClients) {
+    client.emit("results", results);
+    client.emit("suggestions", suggestions);
+  }
 }
 
 function sendJson(response, status, body) {
@@ -169,6 +150,11 @@ function cleanText(value, maxLength) {
   return typeof value === "string" ? value.trim().slice(0, maxLength) : "";
 }
 
+function canonicalizeInput(value) {
+  if (typeof value !== "string") return "";
+  return value.trim().replace(/\s+/g, " ").toLocaleUpperCase("de-DE").slice(0, MAX_PROJECT_NAME_LENGTH);
+}
+
 async function handleApi(request, response, url) {
   const parts = url.pathname.split("/").filter(Boolean);
 
@@ -177,7 +163,8 @@ async function handleApi(request, response, url) {
   }
 
   if (request.method === "GET" && url.pathname === "/api/projects") {
-    return sendJson(response, 200, { projects, totalProjects: projects.length });
+    const suggestions = getProjectSuggestions();
+    return sendJson(response, 200, { projects: suggestions, totalProjects: suggestions.length });
   }
 
   if (request.method === "GET" && url.pathname === "/api/config") {
@@ -185,14 +172,14 @@ async function handleApi(request, response, url) {
   }
 
   if (request.method === "GET" && url.pathname === "/api/results") {
-    return sendJson(response, 200, getProjectResults());
+    return sendJson(response, 200, getWordCloudData());
   }
 
   if (request.method === "POST" && url.pathname === "/api/votes") {
     const body = await readJson(request);
-    const projectId = typeof body.projectId === "string" ? body.projectId : "";
-    if (!projects.some((project) => project.id === projectId)) {
-      return sendJson(response, 400, { error: "Choose a project from the list." });
+    const name = canonicalizeInput(body.name);
+    if (!name) {
+      return sendJson(response, 400, { error: "Gib einen Projekt-Namen ein." });
     }
     if (typeof body.voterId !== "string" || !/^[a-f0-9-]{20,64}$/i.test(body.voterId)) {
       return sendJson(response, 400, { error: "A valid voter ID is required." });
@@ -201,15 +188,15 @@ async function handleApi(request, response, url) {
       return sendJson(response, 409, { error: "This browser has already cast its vote." });
     }
     const voteId = ALLOW_REPEAT_VOTES ? crypto.randomUUID() : body.voterId;
-    projectVotes[voteId] = projectId;
+    projectVotes[voteId] = name;
     try {
       await persistJson(VOTES_FILE, projectVotes);
     } catch (error) {
       delete projectVotes[voteId];
       throw error;
     }
-    publishProjectResults();
-    return sendJson(response, 201, getProjectResults());
+    publishProjectUpdates();
+    return sendJson(response, 201, getWordCloudData());
   }
 
   if (request.method === "GET" && url.pathname === "/api/rooms") {
@@ -319,8 +306,8 @@ async function serveStatic(request, response, url) {
   let requestedPath = url.pathname === "/" ? "/index.html" : decodeURIComponent(url.pathname);
   if (requestedPath === "/results" || requestedPath === "/results/") requestedPath = "/results.html";
   const libraryAssets = {
-    "/vendor/chart.umd.js": path.join(__dirname, "node_modules/chart.js/dist/chart.umd.js"),
     "/vendor/socket.io.min.js": path.join(__dirname, "node_modules/socket.io/client-dist/socket.io.min.js"),
+    "/vendor/wordcloud2.js": path.join(__dirname, "node_modules/wordcloud/src/wordcloud2.js"),
   };
   const filePath = libraryAssets[requestedPath] || path.resolve(publicDir, `.${requestedPath}`);
   if (!libraryAssets[requestedPath] && !filePath.startsWith(`${publicDir}${path.sep}`)) {
@@ -368,7 +355,8 @@ const { Server } = require("socket.io");
 const io = new Server(server, { serveClient: false });
 io.on("connection", (client) => {
   resultClients.add(client);
-  client.emit("results", getProjectResults());
+  client.emit("results", getWordCloudData());
+  client.emit("suggestions", getProjectSuggestions());
   client.on("disconnect", () => resultClients.delete(client));
 });
 

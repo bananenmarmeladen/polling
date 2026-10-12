@@ -91,32 +91,9 @@ button:focus-visible, a:focus-visible, input:focus-visible { outline: 3px solid 
 .toast { position: fixed; z-index: 5; right: 20px; bottom: 20px; max-width: calc(100% - 40px); padding: 12px 16px; background: var(--ink-deep); color: white; font-size: 13px; opacity: 0; pointer-events: none; transform: translateY(8px); transition: .2s; }
 .toast.visible { opacity: 1; transform: translateY(0); }
 
-.results-page { min-height: 100vh; background: #082d4a; color: #f8fbfd; }
-.results-header { min-height: 91px; }
-.results-header .site-logo { width: 76px; height: 62px; }
-.fullscreen-button { display: inline-flex; align-items: center; gap: 8px; padding: 9px 13px; border: 1px solid #cbdce3; background: white; color: #174967; font-size: 12px; font-weight: 700; cursor: pointer; }
-.fullscreen-button:hover { border-color: #55b9c2; color: #08769a; }
-.results-stage { width: min(1440px, calc(100% - 72px)); min-height: calc(100vh - 91px); margin: 0 auto; padding: clamp(33px, 5vh, 60px) 0 23px; }
-.stage-heading { display: flex; align-items: flex-end; justify-content: space-between; gap: 30px; margin-bottom: 30px; }
-.stage-kicker { display: flex; align-items: center; gap: 9px; margin: 0 0 14px; color: #89c9d3; font-size: 11px; font-weight: 700; letter-spacing: .14em; }
-.live-pulse { width: 7px; height: 7px; border-radius: 50%; background: #6bd2bc; box-shadow: 0 0 0 4px #6bd2bc21; }
-.stage-heading h1 { margin: 0; color: #fff; font-size: clamp(35px, 5vw, 58px); font-weight: 600; letter-spacing: -.035em; line-height: 1.12; }
-.stage-heading h1 span { color: #68c7ce; }
-.stage-description { margin: 11px 0 0; color: #bfd1dc; font-size: 15px; }
-.vote-counter { display: flex; flex: 0 0 auto; align-items: flex-end; flex-direction: column; gap: 3px; padding: 0 0 3px; }
-.vote-counter strong { color: #80d7d4; font-size: clamp(36px, 5vw, 56px); font-weight: 600; line-height: 1; }
-.vote-counter span { color: #acc1ce; font-size: 9px; font-weight: 700; letter-spacing: .12em; }
-.chart-panel { padding: 18px 21px 10px; border: 1px solid #ffffff18; background: linear-gradient(145deg, #0d3a59, #0b3452 75%, #092c49); box-shadow: 0 18px 48px #031a2b33; }
-.chart-heading { display: flex; align-items: center; justify-content: space-between; gap: 15px; color: #d6e5ec; font-size: 10px; font-weight: 700; letter-spacing: .12em; }
-#connection-status { display: inline-flex; align-items: center; gap: 7px; color: #d7c58e; font-size: 9px; }
-#connection-status i { width: 6px; height: 6px; border-radius: 50%; background: #d5ad60; }
-#connection-status.connected { color: #8ee0c3; }
-#connection-status.connected i { background: #64d4a7; box-shadow: 0 0 10px #64d4a788; }
-.chart-wrap { position: relative; height: min(62vh, 620px); min-height: 440px; margin-top: 13px; }
-.results-error { min-height: 0; margin: 0; color: #ffc5ad; font-size: 12px; }
-.stage-footer { display: flex; align-items: center; justify-content: space-between; gap: 15px; padding-top: 18px; color: #a7bfcc; font-size: 11px; }
-.stage-footer a { color: #d2e4ec; text-decoration: none; }
-.stage-footer span b { margin-left: 5px; color: #71cdd0; font-size: 15px; }
+.word-cloud-page { width: 100%; height: 100%; min-height: 100vh; overflow: hidden; background: #fff; }
+.word-cloud-stage { display: grid; width: 100vw; height: 100vh; overflow: hidden; place-items: center; }
+#word-cloud { display: block; width: 100%; height: 100%; }
 
 @media (max-width: 760px) {
   .site-header { min-height: 82px; padding: 10px 22px; }
@@ -129,20 +106,6 @@ button:focus-visible, a:focus-visible, input:focus-visible { outline: 3px solid 
   .intro-copy h2 { font-size: 36px; }
   .intro-copy > p:not(.section-kicker) { font-size: 15px; }
   .vote-panel { padding: 26px; }
-  .results-header { min-height: 80px; }
-  .results-header .site-logo { width: 65px; height: 53px; }
-  .results-header .main-nav { gap: 14px; }
-  .fullscreen-button { padding: 8px; font-size: 0; }
-  .fullscreen-button span { font-size: 17px; }
-  .results-stage { width: calc(100% - 32px); min-height: calc(100vh - 80px); padding-top: 32px; }
-  .stage-heading { align-items: flex-start; margin-bottom: 21px; }
-  .stage-heading h1 { font-size: 37px; }
-  .stage-description { max-width: 380px; font-size: 13px; line-height: 1.6; }
-  .vote-counter { gap: 5px; padding-top: 24px; }
-  .vote-counter strong { font-size: 36px; }
-  .vote-counter span { max-width: 76px; font-size: 7px; text-align: right; }
-  .chart-panel { padding: 15px 12px 8px; }
-  .chart-wrap { height: 57vh; min-height: 440px; margin-top: 8px; }
 }
 
 @media (max-width: 480px) {
@@ -162,21 +125,4 @@ button:focus-visible, a:focus-visible, input:focus-visible { outline: 3px solid 
   .vote-panel-heading { margin-bottom: 22px; }
   .vote-panel-heading h2 { font-size: 22px; }
   .site-footer { align-items: flex-start; flex-direction: column; justify-content: center; gap: 8px; padding: 18px; font-size: 8px; }
-  .results-header { min-height: 72px; padding-right: 12px; padding-left: 15px; }
-  .results-header .site-logo { width: 54px; height: 48px; }
-  .results-header .main-nav { gap: 10px; }
-  .results-header .nav-link { font-size: 8px; }
-  .fullscreen-button { padding: 7px; }
-  .results-stage { width: calc(100% - 24px); padding-top: 27px; }
-  .stage-heading { align-items: flex-start; gap: 9px; }
-  .stage-kicker { font-size: 8px; letter-spacing: .07em; }
-  .stage-heading h1 { font-size: 29px; }
-  .stage-description { max-width: 255px; font-size: 11px; }
-  .vote-counter { padding-top: 23px; }
-  .vote-counter strong { font-size: 29px; }
-  .vote-counter span { max-width: 68px; font-size: 6px; }
-  .chart-panel { overflow: hidden; padding: 13px 9px 8px; }
-  .chart-heading { font-size: 8px; }
-  .chart-wrap { width: 910px; height: 58vh; min-height: 410px; }
-  .stage-footer { align-items: flex-start; flex-direction: column; font-size: 10px; }
 }

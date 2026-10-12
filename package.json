@@ -10,7 +10,7 @@
     "node": ">=20"
   },
   "dependencies": {
-    "chart.js": "^4.5.1",
-    "socket.io": "^4.8.4"
+    "socket.io": "^4.8.4",
+    "wordcloud": "^1.2.3"
   }
 }
